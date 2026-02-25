@@ -3,35 +3,55 @@
 require 'spec_helper'
 
 describe OmniAuth::Strategies::Apple do
-  let(:request) { double('Request', params: {}, cookies: {}, env: {}) }
+  let(:request) do
+    double(
+      'Request',
+      params: {},
+      cookies: {},
+      env: {
+        'action_dispatch.cookies' => cookie_jar
+      }
+    )
+  end
+  let(:cookie_jar) do
+    cookie_hash = {}
+    double('cookie jar').tap do |jar|
+      allow(jar).to receive(:encrypted).and_return(cookie_hash)
+      allow(jar).to receive(:delete) do |key|
+        cookie_hash.delete(key)
+      end
+    end
+  end
   let(:app) do
     lambda do
       [200, {}, ['Hello.']]
     end
   end
 
-  let(:options) {{
+  let(:options) do
+    {
       team_id: 'my-team-id',
       key_id: 'my-key-id',
-      pem: ::OpenSSL::PKey::EC.generate('prime256v1').to_pem,
-  }}
+      pem: ::OpenSSL::PKey::EC.generate('prime256v1').to_pem
+    }
+  end
 
   let(:apple_key) { OpenSSL::PKey::RSA.generate(1024) }
   let(:auth_keys) do
     {
-        keys: [
-            {
-                kty: "RSA",
-                kid: "1",
-                use: "sig",
-                alg: "RS256",
-                n: Base64.urlsafe_encode64(apple_key.n.to_s(2)),
-                e: Base64.urlsafe_encode64(apple_key.e.to_s(2)),
-            }
-        ]
+      keys: [
+        {
+          kty: 'RSA',
+          kid: '1',
+          use: 'sig',
+          alg: 'RS256',
+          n: Base64.urlsafe_encode64(apple_key.n.to_s(2)),
+          e: Base64.urlsafe_encode64(apple_key.e.to_s(2))
+        }
+      ]
     }
   end
-  let(:kid)  do
+  let(:kid) do
     '1'
   end
   let(:valid_id_token_payload) do
@@ -43,7 +63,7 @@ describe OmniAuth::Strategies::Apple do
       iat: Time.now.to_i,
       nonce_supported: true,
       email: 'something@privatrerelay.appleid.com',
-      email_verified: true,
+      email_verified: true
     }
   end
   let(:id_token_payload) do
@@ -56,7 +76,7 @@ describe OmniAuth::Strategies::Apple do
   end
   let(:access_token) { OAuth2::AccessToken.from_hash(subject.client, 'id_token' => id_token) }
   let(:strategy) do
-    OmniAuth::Strategies::Apple.new(app, 'appid', 'secret', options ).tap do |strategy|
+    OmniAuth::Strategies::Apple.new(app, 'appid', 'secret', options).tap do |strategy|
       allow(strategy).to receive(:request) do
         request
       end
@@ -69,7 +89,7 @@ describe OmniAuth::Strategies::Apple do
     stub_request(:get, 'https://appleid.apple.com/auth/keys').to_return(
       body: auth_keys.to_json,
       headers: {
-       'Content-Type': 'application/json'
+        'Content-Type': 'application/json'
       }
     )
   end
@@ -99,7 +119,7 @@ describe OmniAuth::Strategies::Apple do
     describe 'overrides' do
       context 'as strings' do
         it 'should allow overriding the site' do
-          options.merge!({ client_options: {'site' => 'https://example.com'} })
+          options.merge!({ client_options: { 'site' => 'https://example.com' } })
           expect(subject.client.site).to eq('https://example.com')
         end
 
@@ -156,18 +176,18 @@ describe OmniAuth::Strategies::Apple do
         options.merge!(scope: 'one two')
         expect(subject.authorize_params['scope']).to eq('one two')
       end
-
     end
 
     describe 'state' do
       it 'should set the omniauth.state' do
-        expect(subject.authorize_params['state']).to match /\h+/
+        expect(subject.authorize_params['state']).to match(/\h+/)
       end
     end
 
     describe 'overrides' do
       it 'should include top-level options that are marked as :authorize_options' do
-        options.merge!(authorize_options: %i[scope foo request_visible_actions], scope: 'http://bar', foo: 'baz', hd: 'wow', request_visible_actions: 'something')
+        options.merge!(authorize_options: %i[scope foo request_visible_actions], scope: 'http://bar', foo: 'baz',
+                       hd: 'wow', request_visible_actions: 'something')
         expect(subject.authorize_params['scope']).to eq('http://bar')
         expect(subject.authorize_params['foo']).to eq('baz')
         expect(subject.authorize_params['hd']).to eq(nil)
@@ -178,7 +198,8 @@ describe OmniAuth::Strategies::Apple do
 
   describe '#authorize_params' do
     it 'should include any authorize params passed in the :authorize_params option' do
-      options.merge!(authorize_params: { request_visible_actions: 'something', foo: 'bar', baz: 'zip' }, bad: 'not_included')
+      options.merge!(authorize_params: { request_visible_actions: 'something', foo: 'bar', baz: 'zip' },
+                     bad: 'not_included')
       expect(subject.authorize_params['request_visible_actions']).to eq('something')
       expect(subject.authorize_params['foo']).to eq('bar')
       expect(subject.authorize_params['baz']).to eq('zip')
@@ -237,9 +258,9 @@ describe OmniAuth::Strategies::Apple do
       {
         name: {
           firstName: 'first',
-          lastName: 'last',
+          lastName: 'last'
         },
-        email: 'something@privatrerelay.appleid.com',
+        email: 'something@privatrerelay.appleid.com'
       }
     end
     before(:each) do
@@ -297,7 +318,7 @@ describe OmniAuth::Strategies::Apple do
             firstName: 'first',
             lastName: 'last'
           },
-          email: "spoofed@example.com"
+          email: 'spoofed@example.com'
         }.to_json
       end
 
@@ -452,7 +473,7 @@ describe OmniAuth::Strategies::Apple do
       before do
         stub_request(:get, 'https://appleid.apple.com/auth/keys').to_return(
           status: 502,
-          body: "<html><head><title>502 Bad Gateway..."
+          body: '<html><head><title>502 Bad Gateway...'
         )
       end
 
@@ -477,6 +498,17 @@ describe OmniAuth::Strategies::Apple do
         expect { subject.info }.to raise_error(
           OmniAuth::Strategies::OAuth2::CallbackError, /jwks_fetching_failed/
         )
+      end
+    end
+  end
+
+  describe 'fallback nonce' do
+    context 'setting the fallback cookie' do
+      it do
+        subject.authorize_params # initializes env, session (for test_mode) and populates 'nonce', 'state'
+
+        cookie = cookie_jar.encrypted[OmniAuth::Strategies::Apple::BACKUP_NONCE_COOKIE]
+        expect(cookie).not_to be(nil)
       end
     end
   end
