@@ -7,6 +7,9 @@ module OmniAuth
   module Strategies
     class Apple < OmniAuth::Strategies::OAuth2
       ISSUER = 'https://appleid.apple.com'
+      # If we were interested in making this more broadly available, we could make this value
+      # configurable. I'm satisfied with just having it as an updatable constant for now.
+      BACKUP_NONCE_COOKIE = 'com.apple.auth.params'
 
       option :name, 'apple'
 
@@ -66,11 +69,31 @@ module OmniAuth
       private
 
       def new_nonce
-        session['omniauth.nonce'] = SecureRandom.urlsafe_base64(16)
+        nonce = SecureRandom.urlsafe_base64(16)
+        session['omniauth.nonce'] = nonce
+        # This is the crux of the login issue. Apple's flow apparently relies on a POST when coming back
+        # to the site, so cookie policies have to be pretty lax (e.g., SameSite none.) There is zero chance
+        # I am going to ever allow us to set that for the Reforge session store because it has broad security
+        # implications. Instead, we create an Apple-specific nonce cookie that does have this lax policy, and
+        # if the `omniauth.nonce` value cannot be found in the session, we'll fall back to this instead.
+
+        cookies.encrypted[BACKUP_NONCE_COOKIE] = {
+          same_site: :none,
+          expires: 1.hour.from_now,
+          secure: true,
+          value: nonce
+        }
+        nonce
       end
 
       def stored_nonce
-        session.delete('omniauth.nonce')
+        nonce = session.delete('omniauth.nonce') || cookies.encrypted[BACKUP_NONCE_COOKIE]
+        cookies.delete BACKUP_NONCE_COOKIE
+        nonce
+      end
+
+      def cookies
+        request.env['action_dispatch.cookies']
       end
 
       def id_info
